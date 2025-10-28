@@ -38,13 +38,13 @@ stop-all:
     export COMPOSE_FILE=docker-compose.yml:docker-compose.tips.yml && docker compose down && docker compose rm && rm -rf data/
 
 # Start every service running in docker, useful for demos
-start-all: stop-all
+start-all: stop-all ensure-node-reth-image
     export COMPOSE_FILE=docker-compose.yml:docker-compose.tips.yml && mkdir -p data/kafka data/minio data/node-reth && docker compose build && docker compose up -d
 
 # Start every service in docker, except the one you're currently working on. e.g. just start-except ui ingress-rpc
-start-except programs: stop-all
+start-except programs: stop-all ensure-node-reth-image
     #!/bin/bash
-    all_services=(kafka kafka-setup minio minio-setup node-reth ingress-rpc audit ui)
+    all_services=(kafka kafka-setup minio minio-setup node-reth-execution node-reth-consensus ingress-rpc audit ui)
     exclude_services=({{ programs }})
     
     # Create result array with services not in exclude list
@@ -85,3 +85,44 @@ ingress-writer:
 
 ui:
     cd ui && yarn dev
+
+# Build node-reth Docker image
+# Args:
+#   ref: Git ref to build from GitHub (default: "main")
+#   local: Local path to build from (default: "" = use GitHub)
+# Examples:
+#   just build-node-reth                     # Build from GitHub main branch
+#   just build-node-reth ref=v1.2.3          # Build from GitHub tag v1.2.3
+#   just build-node-reth local=../node-reth  # Build from local checkout
+# Tags created: node-reth:latest and node-reth:<commit-hash> (adds -dirty suffix if local working tree has changes)
+build-node-reth ref="main" local="":
+    #!/bin/bash
+    if [ -z "{{ local }}" ]; then
+        echo "Building node-reth from GitHub ref: {{ ref }}"
+        # Get the commit hash for the ref
+        COMMIT_HASH=$(git ls-remote https://github.com/base/node-reth.git {{ ref }} | cut -f1 | cut -c1-8)
+        echo "Commit hash: $COMMIT_HASH"
+        docker build -t node-reth:latest -t node-reth:$COMMIT_HASH \
+            -f https://raw.githubusercontent.com/base/node-reth/{{ ref }}/Dockerfile \
+            https://github.com/base/node-reth.git#{{ ref }}
+    else
+        echo "Building node-reth from local path: {{ local }}"
+        # Get the commit hash from local repo
+        cd {{ local }}
+        COMMIT_HASH=$(git rev-parse --short=8 HEAD)
+        # Check if working tree is dirty
+        if ! git diff-index --quiet HEAD --; then
+            COMMIT_HASH="${COMMIT_HASH}-dirty"
+        fi
+        echo "Commit hash: $COMMIT_HASH"
+        docker build -t node-reth:latest -t node-reth:$COMMIT_HASH -f {{ local }}/Dockerfile {{ local }}
+    fi
+
+ensure-node-reth-image:
+    #!/bin/bash
+    if ! docker image inspect node-reth:latest >/dev/null 2>&1; then
+        echo "node-reth:latest image not found, building..."
+        just build-node-reth
+    else
+        echo "node-reth:latest image already exists"
+    fi
