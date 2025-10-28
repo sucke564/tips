@@ -6918,6 +6918,7 @@ dependencies = [
  "reth-optimism-evm",
  "reth-rpc-eth-types",
  "revm-context-interface",
+ "serde",
  "serde_json",
  "tips-audit",
  "tips-core",
