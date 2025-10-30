@@ -68,7 +68,7 @@ pub struct CancelBundle {
     pub replacement_uuid: String,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BundleWithMetadata {
     bundle: Bundle,
     uuid: Uuid,
